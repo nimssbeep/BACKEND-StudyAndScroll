@@ -141,6 +141,7 @@ class Story(Base):
     bg_gradient = Column(String(120), default="from-indigo-100 via-purple-100 to-pink-100")
     created_at = Column(DateTime(timezone=True), default=utc_now)
     expires_at = Column(DateTime(timezone=True), default=lambda: utc_now() + timedelta(hours=24))
+    is_archived = Column(Boolean, default=False, index=True)
 
     author = relationship("User", back_populates="stories")
  

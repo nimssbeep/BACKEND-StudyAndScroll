@@ -120,6 +120,8 @@ class StoryResponse(BaseModel):
     subject: str
     bg_gradient: str
     created_at: datetime
+    expires_at: Optional[datetime] = None
+    is_archived: bool = False
 
 class FriendUserResponse(BaseModel):
     id: int

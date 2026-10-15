@@ -1,8 +1,9 @@
 from typing import List, Optional
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Friendship, Story, Notification
+from app.models import User, Friendship, Story, Notification, utc_now
 from app.schemas import (
     StoryCreateRequest, StoryResponse, FriendUserResponse, NotificationResponse
 )
@@ -173,7 +174,22 @@ def get_stories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stories = db.query(Story).order_by(Story.created_at.desc()).limit(15).all()
+    now = utc_now()
+    # Auto-archive any stories that have passed their 24-hour window
+    db.query(Story).filter(
+        Story.is_archived == False,
+        Story.expires_at <= now,
+    ).update({"is_archived": True}, synchronize_session=False)
+    db.commit()
+
+    # Retrieve only active, non-archived stories
+    stories = (
+        db.query(Story)
+        .filter(Story.is_archived == False, Story.expires_at > now)
+        .order_by(Story.created_at.desc())
+        .limit(25)
+        .all()
+    )
     result = []
     for s in stories:
         author = db.query(User).filter(User.id == s.user_id).first()
@@ -190,9 +206,49 @@ def get_stories(
                     subject=s.subject,
                     bg_gradient=s.bg_gradient,
                     created_at=s.created_at,
+                    expires_at=s.expires_at,
+                    is_archived=s.is_archived,
                 )
             )
     return result
+
+@router.get("/stories/archive", response_model=List[StoryResponse])
+def get_story_archive(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    now = utc_now()
+    # Ensure any expired stories are archived
+    db.query(Story).filter(
+        Story.is_archived == False,
+        Story.expires_at <= now,
+    ).update({"is_archived": True}, synchronize_session=False)
+    db.commit()
+
+    # Retrieve current user's archived stories
+    archived = (
+        db.query(Story)
+        .filter(Story.user_id == current_user.id, Story.is_archived == True)
+        .order_by(Story.created_at.desc())
+        .all()
+    )
+    return [
+        StoryResponse(
+            id=s.id,
+            user_id=current_user.id,
+            author_name=current_user.name,
+            author_handle=current_user.handle,
+            author_avatar=current_user.avatar_url,
+            tag=s.tag,
+            title=s.title,
+            subject=s.subject,
+            bg_gradient=s.bg_gradient,
+            created_at=s.created_at,
+            expires_at=s.expires_at,
+            is_archived=True,
+        )
+        for s in archived
+    ]
 
 @router.post("/stories", response_model=StoryResponse)
 def create_story(
@@ -200,12 +256,16 @@ def create_story(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    now = utc_now()
     story = Story(
         user_id=current_user.id,
         tag=payload.tag,
         title=payload.title,
         subject=payload.subject,
         bg_gradient=payload.bg_gradient,
+        created_at=now,
+        expires_at=now + timedelta(hours=24),
+        is_archived=False,
     )
     db.add(story)
     db.commit()
@@ -221,4 +281,40 @@ def create_story(
         subject=story.subject,
         bg_gradient=story.bg_gradient,
         created_at=story.created_at,
+        expires_at=story.expires_at,
+        is_archived=story.is_archived,
     )
+
+@router.delete("/stories/{story_id}")
+def delete_story(
+    story_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found.")
+
+    if story.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only delete your own stories.")
+
+    db.delete(story)
+    db.commit()
+    return {"message": "Story deleted successfully", "id": story_id}
+
+@router.post("/stories/{story_id}/archive")
+def archive_story(
+    story_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    story = db.query(Story).filter(Story.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found.")
+
+    if story.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only archive your own stories.")
+
+    story.is_archived = True
+    db.commit()
+    return {"message": "Story moved to your archive", "id": story_id}
