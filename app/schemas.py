@@ -39,14 +39,34 @@ class UserResponse(BaseModel):
     handle: str
     email: EmailStr
     avatar_url: str
+    bio: str = ""
+    birthday: str = ""
+    school: str = ""
     education_level: str
-    preferences: List[str]
+    preferences: List[str] = []
+    certifications: List[str] = []
+    social_links: dict = {}
     onboarding_completed: bool
     streak_days: int
     cards_learned_this_week: int
 
     class Config:
         from_attributes = True
+
+class ProfileUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    handle: Optional[str] = None
+    bio: Optional[str] = None
+    birthday: Optional[str] = None
+    school: Optional[str] = None
+    education_level: Optional[str] = None
+    preferences: Optional[List[str]] = None
+    certifications: Optional[List[str]] = None
+    social_links: Optional[dict] = None
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)
 
 class AuthResponse(BaseModel):
     access_token: str
@@ -128,8 +148,12 @@ class FriendUserResponse(BaseModel):
     name: str
     handle: str
     avatar_url: str
+    bio: str = ""
+    school: str = ""
     education_level: str
-    preferences: List[str]
+    preferences: List[str] = []
+    certifications: List[str] = []
+    social_links: dict = {}
     is_friend: bool
     followers_count: int = 0
     following_count: int = 0

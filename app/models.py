@@ -17,8 +17,13 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     avatar_url = Column(String(500), default="")
+    bio = Column(String(300), default="")
+    birthday = Column(String(50), default="")
+    school = Column(String(160), default="")
     education_level = Column(String(50), default="University")  # "High School" | "University"
     preferences = Column(JSON, default=list)  # e.g., ["Mathematics", "Biology", "Computer Science"]
+    certifications = Column(JSON, default=list)  # e.g., ["AWS Cloud Practitioner", "CompTIA Security+"]
+    social_links = Column(JSON, default=dict)  # e.g., {"github": "...", "linkedin": "...", "twitter": "..."}
     onboarding_completed = Column(Boolean, default=False)
     streak_days = Column(Integer, default=1)
     cards_learned_this_week = Column(Integer, default=0)

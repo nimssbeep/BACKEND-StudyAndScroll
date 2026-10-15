@@ -5,7 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, Fil
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
-from app.schemas import RegisterRequest, LoginRequest, PreferencesUpdateRequest, AuthResponse, UserResponse
+from app.schemas import (
+    RegisterRequest,
+    LoginRequest,
+    PreferencesUpdateRequest,
+    ProfileUpdateRequest,
+    PasswordChangeRequest,
+    AuthResponse,
+    UserResponse,
+)
 from app.security import (
     hash_password,
     verify_password,
@@ -177,3 +185,87 @@ def remove_avatar(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+@router.put("/profile", response_model=UserResponse)
+def update_profile(
+    payload: ProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Updates the user's name, username/handle, bio, school, birthday, education level, certifications, and social links."""
+    if payload.name is not None:
+        cleaned_name = payload.name.strip()
+        if len(cleaned_name) < 2:
+            raise HTTPException(status_code=400, detail="Name must be at least 2 characters.")
+        current_user.name = cleaned_name[:60]
+
+    if payload.handle is not None:
+        raw_handle = payload.handle.strip().lstrip("@").lower()
+        if not re.match(r"^[a-zA-Z0-9_.]+$", raw_handle):
+            raise HTTPException(
+                status_code=400,
+                detail="Username can only contain letters, numbers, underscores, and dots.",
+            )
+        if len(raw_handle) < 3 or len(raw_handle) > 30:
+            raise HTTPException(
+                status_code=400,
+                detail="Username must be between 3 and 30 characters long.",
+            )
+        formatted_handle = f"@{raw_handle}"
+        # Check uniqueness against other users
+        existing = db.query(User).filter(User.handle == formatted_handle, User.id != current_user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Username {formatted_handle} is already taken.")
+        current_user.handle = formatted_handle
+
+    if payload.bio is not None:
+        current_user.bio = payload.bio.strip()[:300]
+
+    if payload.birthday is not None:
+        current_user.birthday = payload.birthday.strip()[:50]
+
+    if payload.school is not None:
+        current_user.school = payload.school.strip()[:160]
+
+    if payload.education_level is not None:
+        current_user.education_level = payload.education_level.strip()[:60]
+
+    if payload.preferences is not None:
+        current_user.preferences = [p.strip()[:40] for p in payload.preferences if p.strip()][:10]
+
+    if payload.certifications is not None:
+        current_user.certifications = [c.strip()[:80] for c in payload.certifications if c.strip()][:20]
+
+    if payload.social_links is not None:
+        cleaned_socials = {}
+        for k, v in payload.social_links.items():
+            k_clean = str(k).strip()[:30]
+            v_clean = str(v).strip()[:200]
+            if v_clean:
+                cleaned_socials[k_clean] = v_clean
+        current_user.social_links = cleaned_socials
+
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@router.put("/change-password")
+def change_password(
+    payload: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verifies the user's current password and securely updates it with a new hashed password."""
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    if len(payload.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="New password cannot be the same as your current password.")
+
+    current_user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+    return {"message": "Password changed successfully."}
+
