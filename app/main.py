@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
-# Allow all localhost / 127.0.0.1 / [::1] origins across any port for development
+# Allow localhost and Vercel deployments
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -36,7 +36,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://[::1]:5173",
     ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?$|^https://.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,6 +75,15 @@ app.include_router(auth.router)
 app.include_router(feed.router)
 app.include_router(materials.router)
 app.include_router(social.router)
+
+@app.get("/")
+@app.head("/")
+def root():
+    return {
+        "status": "online",
+        "service": settings.APP_NAME,
+        "docs": "/docs"
+    }
 
 @app.get("/health")
 def health_check():
