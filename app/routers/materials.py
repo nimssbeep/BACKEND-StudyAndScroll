@@ -45,6 +45,12 @@ async def upload_study_material(
     clean_subject = sanitize_text(subject, 60)
     safe_fname = sanitize_filename(file.filename or "notes.txt")
 
+    if ".env" in safe_fname.lower() or "secret" in safe_fname.lower():
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot upload environment configuration or credentials files. Please upload educational notes (.pdf, .txt, .md).",
+        )
+
     raw_bytes = await validate_and_read_upload(file)
 
     # Extract text safely
@@ -60,6 +66,13 @@ async def upload_study_material(
         extracted_text = raw_bytes.decode("utf-8", errors="ignore")
 
     clean_content = sanitize_text(extracted_text, 12000)
+
+    # Prevent accidental upload of .env or configuration files
+    if any(k in clean_content for k in ["JWT_SECRET_KEY", "DATABASE_URL", "APP_NAME=", "CSRF_SECRET_KEY", "-----BEGIN PRIVATE KEY-----"]):
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file contains environment configuration or secret keys, not educational study material.",
+        )
 
     # Run Hallucination Shield & Prompt Injection Guard to generate grounded cards
     generated_cards = await generate_grounded_cards_from_material(
@@ -127,3 +140,24 @@ async def upload_study_material(
         "material_id": material.id,
         "cards_generated": len(created_posts),
     }
+
+@router.delete("/{material_id}")
+def delete_study_material(
+    material_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    mat = db.query(StudyMaterial).filter(StudyMaterial.id == material_id).first()
+    if not mat:
+        raise HTTPException(status_code=404, detail="Study material not found")
+    if mat.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this material")
+
+    # Delete all generated posts for this material
+    posts = db.query(FeedPost).filter(FeedPost.material_id == material_id).all()
+    for p in posts:
+        db.delete(p)
+    db.delete(mat)
+    db.commit()
+    return {"message": "Material and associated study cards deleted successfully."}
+

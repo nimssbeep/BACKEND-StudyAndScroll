@@ -63,7 +63,7 @@ class FeedPost(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    material_id = Column(Integer, ForeignKey("study_materials.id", ondelete="CASCADE"), nullable=False)
+    material_id = Column(Integer, ForeignKey("study_materials.id", ondelete="CASCADE"), nullable=True)
     persona = Column(String(50), nullable=False)  # "Storyteller" | "Quizmaster" | "The Memer" | "Thread Architect"
     post_type = Column(String(30), default="concept")  # "concept" | "quiz"
     subject = Column(String(80), index=True, nullable=False)

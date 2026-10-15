@@ -5,7 +5,7 @@ from app.database import get_db
 from app.models import (
     User, FeedPost, PostLike, SavedPost, PostComment, Friendship, StudyMaterial, Notification
 )
-from app.schemas import FeedPostResponse, CommentCreateRequest, CommentResponse
+from app.schemas import FeedPostResponse, CommentCreateRequest, CommentResponse, PostCreateRequest
 from app.security import get_current_user
 
 router = APIRouter(prefix="/api/feed", tags=["Feed & Quizzes"])
@@ -70,12 +70,19 @@ def get_feed(
         s.post_id for s in db.query(SavedPost).filter(SavedPost.user_id == current_user.id).all()
     }
 
+    author_ids = {p.user_id for p in posts if p.user_id}
+    authors = {u.id: u for u in db.query(User).filter(User.id.in_(author_ids)).all()} if author_ids else {}
+
     results = []
     for p in posts:
         mat = db.query(StudyMaterial).filter(StudyMaterial.id == p.material_id).first()
+        author = authors.get(p.user_id) if p.user_id else None
         results.append(
             FeedPostResponse(
                 id=p.id,
+                user_id=p.user_id,
+                author_name=author.name if author else p.persona,
+                author_handle=author.handle if author else None,
                 persona=p.persona,
                 post_type=p.post_type,
                 subject=p.subject,
@@ -103,6 +110,99 @@ def get_feed(
             )
         )
     return results
+
+@router.post("", response_model=FeedPostResponse)
+def create_custom_post(
+    payload: PostCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allows a learner to publish their own custom study notes, takeaway, or question directly to the feed."""
+    clean_headline = payload.headline.strip()[:220]
+    clean_subject = payload.subject.strip()[:60]
+    clean_body = payload.body.strip()[:3000]
+    hook_val = payload.hook.strip()[:280] if payload.hook else f"Shared by {current_user.name} • {clean_subject}"
+    clean_tags = [t.strip()[:30] for t in (payload.tags or []) if t.strip()]
+    if not clean_tags:
+        clean_tags = [clean_subject]
+
+    new_post = FeedPost(
+        user_id=current_user.id,
+        persona=current_user.name,
+        post_type=payload.post_type or "concept",
+        subject=clean_subject,
+        education_level=current_user.education_level,
+        hook=hook_val,
+        series_tag=(payload.series_tag or "STUDY NOTES").strip()[:80],
+        headline=clean_headline,
+        body=clean_body,
+        image_url=payload.image_url,
+        tags=clean_tags[:8],
+        quiz_question=payload.quiz_question,
+        quiz_options=payload.quiz_options,
+        quiz_correct_index=payload.quiz_correct_index,
+        quiz_explanation=payload.quiz_explanation,
+        source_verified=True,
+        grounding_score=1.0,
+        source_excerpt=f"Original study post authored by @{current_user.handle.lstrip('@')}",
+        likes_count=0,
+        shares_count=0,
+    )
+    db.add(new_post)
+    current_user.cards_learned_this_week += 1
+    db.commit()
+    db.refresh(new_post)
+
+    return FeedPostResponse(
+        id=new_post.id,
+        user_id=new_post.user_id,
+        author_name=current_user.name,
+        author_handle=current_user.handle,
+        persona=new_post.persona,
+        post_type=new_post.post_type,
+        subject=new_post.subject,
+        education_level=new_post.education_level,
+        material_title="Personal Study Post",
+        hook=new_post.hook,
+        series_tag=new_post.series_tag,
+        headline=new_post.headline,
+        body=new_post.body,
+        image_url=new_post.image_url,
+        tags=new_post.tags or [],
+        quiz_question=new_post.quiz_question,
+        quiz_options=new_post.quiz_options,
+        quiz_correct_index=new_post.quiz_correct_index,
+        quiz_explanation=new_post.quiz_explanation,
+        source_verified=new_post.source_verified,
+        grounding_score=new_post.grounding_score,
+        source_excerpt=new_post.source_excerpt,
+        likes_count=0,
+        shares_count=0,
+        liked_by_me=False,
+        saved_by_me=False,
+        comments=[],
+        created_at=new_post.created_at,
+    )
+
+@router.delete("/{post_id}")
+def delete_post(
+    post_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allows a learner to delete their own study post from the feed."""
+    post = db.query(FeedPost).filter(FeedPost.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only delete your own posts")
+
+    db.query(PostLike).filter(PostLike.post_id == post_id).delete()
+    db.query(SavedPost).filter(SavedPost.post_id == post_id).delete()
+    db.query(PostComment).filter(PostComment.post_id == post_id).delete()
+    db.delete(post)
+    db.commit()
+    return {"message": "Post deleted successfully"}
 
 @router.post("/{post_id}/like")
 def toggle_like(

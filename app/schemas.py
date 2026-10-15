@@ -93,6 +93,9 @@ class CommentResponse(BaseModel):
 
 class FeedPostResponse(BaseModel):
     id: int
+    user_id: Optional[int] = None
+    author_name: Optional[str] = None
+    author_handle: Optional[str] = None
     persona: str
     post_type: str
     subject: str
@@ -117,6 +120,21 @@ class FeedPostResponse(BaseModel):
     saved_by_me: bool = False
     comments: List[CommentResponse] = []
     created_at: datetime
+
+class PostCreateRequest(BaseModel):
+    headline: str = Field(..., min_length=2, max_length=220)
+    subject: str = Field(..., min_length=1, max_length=60)
+    body: str = Field(..., min_length=3, max_length=3000)
+    hook: Optional[str] = Field(default=None, max_length=280)
+    series_tag: Optional[str] = Field(default="STUDY NOTES", max_length=80)
+    tags: Optional[List[str]] = Field(default=[])
+    image_url: Optional[str] = None
+    post_type: Optional[str] = Field(default="concept")
+    quiz_question: Optional[str] = None
+    quiz_options: Optional[List[str]] = None
+    quiz_correct_index: Optional[int] = None
+    quiz_explanation: Optional[str] = None
+
 
 class StoryCreateRequest(BaseModel):
     tag: str = Field(default="IN MY STUDY ERA", max_length=60)
