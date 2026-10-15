@@ -142,35 +142,37 @@ async def generate_grounded_cards_from_material(
         {safe_content}
         </source_material>
         """
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(
-                    url,
-                    json={
-                        "system_instruction": {"parts": [{"text": system_instruction}]},
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1},
-                    },
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    raw_json = data["candidates"][0]["content"]["parts"][0]["text"]
-                    cards = json.loads(raw_json)
-                    verified_cards = []
-                    for c in cards:
-                        claim = f"{c.get('headline', '')} {c.get('body', '')} {c.get('quiz_question', '')}"
-                        excerpt = c.get("source_excerpt") or sentences[0]
-                        ok, score, clean_excerpt = compute_grounding_score(claim, excerpt, safe_content)
-                        if ok:
-                            c["source_verified"] = True
-                            c["grounding_score"] = score
-                            c["source_excerpt"] = sanitize_text(clean_excerpt, 300)
-                            verified_cards.append(c)
-                    if verified_cards:
-                        return verified_cards
-        except Exception:
-            pass  # Fall back to deterministic extractive generator below
+        models = ["gemini-3-flash-preview", "gemini-3.5-flash", "gemini-3-flash", "gemini-2.5-flash"]
+        for model in models:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GEMINI_API_KEY}"
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.post(
+                        url,
+                        json={
+                            "system_instruction": {"parts": [{"text": system_instruction}]},
+                            "contents": [{"parts": [{"text": prompt}]}],
+                            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1},
+                        },
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw_json = data["candidates"][0]["content"]["parts"][0]["text"]
+                        cards = json.loads(raw_json)
+                        verified_cards = []
+                        for c in cards:
+                            claim = f"{c.get('headline', '')} {c.get('body', '')} {c.get('quiz_question', '')}"
+                            excerpt = c.get("source_excerpt") or sentences[0]
+                            ok, score, clean_excerpt = compute_grounding_score(claim, excerpt, safe_content)
+                            if ok:
+                                c["source_verified"] = True
+                                c["grounding_score"] = score
+                                c["source_excerpt"] = sanitize_text(clean_excerpt, 300)
+                                verified_cards.append(c)
+                        if verified_cards:
+                            return verified_cards
+            except Exception:
+                continue
 
     # Deterministic Extractive Generator (100% Grounded in Uploaded Text — Zero Hallucination Possible)
     primary_excerpt = sentences[0]
