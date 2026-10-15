@@ -129,3 +129,22 @@ class FriendUserResponse(BaseModel):
     education_level: str
     preferences: List[str]
     is_friend: bool
+    followers_count: int = 0
+    following_count: int = 0
+
+class NotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    actor_id: Optional[int] = None
+    actor_name: Optional[str] = None
+    actor_handle: Optional[str] = None
+    actor_avatar: Optional[str] = None
+    notification_type: str
+    title: str
+    message: str
+    link: Optional[str] = None
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

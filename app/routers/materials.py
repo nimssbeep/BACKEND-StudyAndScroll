@@ -4,7 +4,7 @@ from pypdf import PdfReader
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, StudyMaterial, FeedPost
+from app.models import User, StudyMaterial, FeedPost, Notification
 from app.security import get_current_user, sanitize_text, sanitize_filename, validate_and_read_upload
 from app.ai_shield import generate_grounded_cards_from_material
 
@@ -110,6 +110,16 @@ async def upload_study_material(
         created_posts.append(post)
 
     current_user.cards_learned_this_week += len(created_posts)
+    db.add(
+        Notification(
+            user_id=current_user.id,
+            actor_id=current_user.id,
+            notification_type="material",
+            title="Notes Transformed",
+            message=f"Generated {len(created_posts)} AI-verified cards from \"{clean_title}\".",
+            link="/feed",
+        )
+    )
     db.commit()
 
     return {

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
-    User, FeedPost, PostLike, SavedPost, PostComment, Friendship, StudyMaterial
+    User, FeedPost, PostLike, SavedPost, PostComment, Friendship, StudyMaterial, Notification
 )
 from app.schemas import FeedPostResponse, CommentCreateRequest, CommentResponse
 from app.security import get_current_user
@@ -27,16 +27,12 @@ def get_feed(
         ]
         query = query.filter(FeedPost.id.in_(saved_ids))
     elif tab == "following":
-        friendships = db.query(Friendship).filter(
-            ((Friendship.requester_id == current_user.id) | (Friendship.addressee_id == current_user.id))
-            & (Friendship.status == "accepted")
-        ).all()
-        friend_ids = {
-            f.addressee_id if f.requester_id == current_user.id else f.requester_id
-            for f in friendships
+        following_ids = {
+            f.addressee_id
+            for f in db.query(Friendship).filter(Friendship.requester_id == current_user.id).all()
         }
-        friend_ids.add(current_user.id)
-        query = query.filter(FeedPost.user_id.in_(friend_ids))
+        following_ids.add(current_user.id)
+        query = query.filter(FeedPost.user_id.in_(following_ids))
 
     if persona and persona != "All personas":
         query = query.filter(FeedPost.persona.ilike(f"%{persona}%"))
@@ -132,6 +128,21 @@ def toggle_like(
         post.likes_count += 1
         liked = True
 
+        # Send notification to author if author is different from current user
+        if post.user_id and post.user_id != current_user.id:
+            headline_snippet = post.headline[:45] + ("..." if len(post.headline) > 45 else "")
+            handle_str = f"@{current_user.handle.lstrip('@')}"
+            db.add(
+                Notification(
+                    user_id=post.user_id,
+                    actor_id=current_user.id,
+                    notification_type="like",
+                    title="New Like",
+                    message=f"{current_user.name} ({handle_str}) liked your study card: \"{headline_snippet}\"",
+                    link=f"/feed?post={post.id}",
+                )
+            )
+
     db.commit()
     return {"liked": liked, "likes_count": post.likes_count}
 
@@ -187,6 +198,22 @@ def add_comment(
         content=payload.content,
     )
     db.add(comment)
+
+    # Send notification to author if author is different from current user
+    if post.user_id and post.user_id != current_user.id:
+        comment_snippet = payload.content[:50] + ("..." if len(payload.content) > 50 else "")
+        handle_str = f"@{current_user.handle.lstrip('@')}"
+        db.add(
+            Notification(
+                user_id=post.user_id,
+                actor_id=current_user.id,
+                notification_type="comment",
+                title="New Comment",
+                message=f"{current_user.name} ({handle_str}) commented: \"{comment_snippet}\"",
+                link=f"/feed?post={post.id}",
+            )
+        )
+
     db.commit()
     db.refresh(comment)
     return comment

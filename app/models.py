@@ -27,6 +27,12 @@ class User(Base):
     materials = relationship("StudyMaterial", back_populates="owner", cascade="all, delete-orphan")
     posts = relationship("FeedPost", back_populates="author", cascade="all, delete-orphan")
     stories = relationship("Story", back_populates="author", cascade="all, delete-orphan")
+    notifications = relationship(
+        "Notification",
+        foreign_keys="Notification.user_id",
+        back_populates="recipient",
+        cascade="all, delete-orphan",
+    )
 
 
 class StudyMaterial(Base):
@@ -137,3 +143,20 @@ class Story(Base):
     expires_at = Column(DateTime(timezone=True), default=lambda: utc_now() + timedelta(hours=24))
 
     author = relationship("User", back_populates="stories")
+ 
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notification_type = Column(String(50), nullable=False)  # "like" | "comment" | "follow" | "quiz" | "material"
+    title = Column(String(160), nullable=False)
+    message = Column(String(400), nullable=False)
+    link = Column(String(255), nullable=True)
+    is_read = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+
+    recipient = relationship("User", foreign_keys=[user_id], back_populates="notifications")
+    actor = relationship("User", foreign_keys=[actor_id])
