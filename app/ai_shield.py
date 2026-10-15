@@ -197,7 +197,7 @@ async def generate_grounded_cards_from_material(
             "series_tag": f"THE EVERYDAY {subject.upper()} SERIES",
             "headline": f"{title}: Core Principle Breakdown",
             "body": f"{primary_excerpt} {secondary_excerpt if secondary_excerpt != primary_excerpt else ''}".strip(),
-            "image_url": "https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?w=900&auto=format&fit=crop&q=80",
+            "image_url": None,
             "tags": [subject, education_level, "SourceGrounded"],
             "source_verified": True,
             "grounding_score": max(score_1, 0.96),

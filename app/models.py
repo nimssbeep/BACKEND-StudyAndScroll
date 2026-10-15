@@ -16,7 +16,7 @@ class User(Base):
     handle = Column(String(60), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
-    avatar_url = Column(String(500), default="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80")
+    avatar_url = Column(String(500), default="")
     education_level = Column(String(50), default="University")  # "High School" | "University"
     preferences = Column(JSON, default=list)  # e.g., ["Mathematics", "Biology", "Computer Science"]
     onboarding_completed = Column(Boolean, default=False)
