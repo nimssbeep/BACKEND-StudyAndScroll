@@ -68,35 +68,71 @@ def compute_target_post_count(raw_text: str, file_size_bytes: int = 0) -> int:
     return 6  # Minimum 5-6 feeds guaranteed
 
 
+def is_garbage_or_pdf_bytecode(text: str) -> bool:
+    if not text or len(text.strip()) < 15:
+        return True
+    cleaned = text.strip()
+    if re.search(
+        r"/(Filter|FlateDecode|ColorSpace|DeviceRGB|DeviceGray|Length|XObject|Subtype|Image|Catalog|Pages|Font|Encoding|MediaBox|Annots|ShadingType|Domain|FunctionType|DecodeParms|BitsPerComponent|Width|Height|ExtGState|FontDescriptor|Type\s*/)",
+        cleaned,
+        re.IGNORECASE,
+    ):
+        return True
+    if re.search(r"\b\d+\s+\d+\s+(R|obj|endobj)\b", cleaned) or re.search(
+        r"\b(xref|trailer|startxref)\b", cleaned, re.IGNORECASE
+    ):
+        return True
+    if re.search(r"(QE\s*){3,}|(AAAA){3,}|(IIII){3,}|(0000){4,}", cleaned, re.IGNORECASE):
+        return True
+    if re.search(r"CDEFGHIJKLMNOPQRSTUVWXYZ", cleaned, re.IGNORECASE) or re.search(
+        r"abcdefghijklmnopqrstuvwxyz", cleaned, re.IGNORECASE
+    ):
+        return True
+    symbols = len(re.findall(r"[%*./+^=~`$#<>{}()[\]\\|&!@:;?]", cleaned))
+    if len(cleaned) > 0 and (symbols / len(cleaned)) > 0.16:
+        return True
+    return False
+
+
 def chunk_material_text(raw_text: str, title: str, subject: str, target_count: int) -> List[str]:
+    clean_title = re.sub(r"[!?;:#$%^*()_=[\]{}<>]", " ", title).strip() or "Study Notes"
+    clean_subject = re.sub(r"[!?;:#$%^*()_=[\]{}<>]", " ", subject).strip() or "General"
     cleaned = re.sub(r"\s+", " ", raw_text or "").strip()
     sentences = [
         s.strip()
         for s in re.split(r"(?<=[.!?])\s+|\n+", cleaned)
-        if len(s.strip()) > 25
+        if len(s.strip()) > 25 and not is_garbage_or_pdf_bytecode(s)
     ]
     chunks: List[str] = []
     if len(sentences) >= target_count:
         step = max(1, len(sentences) // target_count)
         for i in range(target_count):
             segment = " ".join(sentences[i * step : (i + 1) * step + 1])[:420]
-            if segment:
+            if segment and not is_garbage_or_pdf_bytecode(segment):
                 chunks.append(segment)
     elif sentences:
         for i in range(target_count):
-            chunks.append(sentences[i % len(sentences)][:420])
-    else:
-        fallbacks = [
-            f"Foundational definition and core mechanism of {title} in {subject}.",
-            f"Step-by-step operational workflow and variable interactions in {title}.",
-            f"High-yield exam patterns and common pitfalls when solving {title} problems.",
-            f"Real-world mental model and intuitive analogy for {title}.",
-            f"First-principles derivation and invariants governing {title}.",
-            f"Boundary conditions and edge cases where standard {title} assumptions shift.",
-            f"Synthesis and active recall consolidation across {title} models.",
+            candidate = sentences[i % len(sentences)][:420]
+            if not is_garbage_or_pdf_bytecode(candidate):
+                chunks.append(candidate)
+
+    if len(chunks) < target_count:
+        educational_angles = [
+            f"Foundational definition: In {clean_subject}, \"{clean_title}\" establishes the primary mapping rule where each input element corresponds to an unambiguous, well-defined output value.",
+            f"Core operational mechanism: When applying {clean_title}, each transformation step must preserve invariants, respect variable bounds, and eliminate extraneous solutions.",
+            f"High-yield exam pattern: Test questions on {clean_title} frequently invert premises or introduce edge cases—such as undefined intervals or zero-division—to verify conceptual retention.",
+            f"Real-world mental model: Picture {clean_title} like a sealed computation module in {clean_subject}: provided the input parameters satisfy the domain criteria, the result is deterministic and reproducible.",
+            f"First-principles deconstruction: Stripping away arbitrary notation, {clean_title} reduces down to a consistent constraint governing system states across {clean_subject}.",
+            f"Common student pitfall: Conflating general relations with {clean_title}—a valid {clean_title} must never map a single domain input to conflicting outputs.",
+            f"Edge-case boundary analysis: What happens to the behavior of {clean_title} as parameters approach asymptotic limits or discontinuous transitions?",
+            f"Active recall challenge: Given the core principles of {clean_title}, derive how the governing rules adapt when external system constraints shift.",
+            f"Synthesis and memory anchor: Linking the axioms of {clean_title} to broader models in {clean_subject} allows rapid recognition under timed exam conditions.",
+            f"Intuitive system analogy: Think of {clean_title} like a functions pipeline in software: clean arguments yield predictable returns without unexpected side-effects.",
+            f"Consolidated review checkpoint: Reviewing the formal properties, domain restrictions, and evaluation steps that define {clean_title} in {clean_subject}.",
+            f"Mastery summary: Integrating all moving components of {clean_title} so you can deconstruct novel examination problems with confidence.",
         ]
-        for i in range(target_count):
-            chunks.append(fallbacks[i % len(fallbacks)])
+        while len(chunks) < target_count:
+            chunks.append(educational_angles[len(chunks) % len(educational_angles)])
     return chunks
 
 
